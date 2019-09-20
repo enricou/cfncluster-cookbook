@@ -1,13 +1,14 @@
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
-# with the License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
-# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
-# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
-# limitations under the License.
+# or in the "LICENSE.txt" file accompanying this file.
+# This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
+# See the License for the specific language governing permissions and limitations under the License.
 from __future__ import print_function
 from future.backports import OrderedDict
 from future.backports.http.server import BaseHTTPRequestHandler, HTTPServer
@@ -37,91 +38,129 @@ LOG_FILE_PATH = "/var/log/parallelcluster/dcv_ext_auth.log"
 
 
 def generate_random_token(token_length):
-    """This function generate CSPRNG compliant random tokens."""
+    """Generate CSPRNG compliant random tokens."""
     allowed_chars = "".join((string.ascii_letters, string.digits, "_", "-"))
     max_int = len(allowed_chars) - 1
     system_random = random.SystemRandom()
+
     return "".join(allowed_chars[system_random.randint(0, max_int)] for _ in range(token_length))
 
 
 class OneTimeTokenHandler:
-    """This class store tokens with information associated with them"""
+    """
+    Store in memory tokens and information associated with them.
+
+    The handler maintains a limited number of tokens in memory with a FIFO logic when the limits are reached.
+    """
 
     def __init__(self, max_number_of_tokens):
         self._tokens = OrderedDict()
         self._max_number_of_tokens = max_number_of_tokens
 
-    def add_token(self, token, values):
+    def add_token(self, token, token_info):
         """
-        Add a token with his corresponding values in the storage
+        Add token and his corresponding information in the storage.
 
-        :param token  the token to store
-        :param values a tuple of values to store
+        :param token the token to store
+        :param token_info a tuple of values associated to the token to store
         """
         while len(self._tokens) >= self._max_number_of_tokens:
-            # we remove the first token stored
+            # Remove the first token stored
             self._tokens.popitem(last=False)
-        self._tokens[token] = values
 
-    def get_token_value(self, token):
-        """Pop the value of the token if present, else returns None"""
+        self._tokens[token] = token_info
+
+    def get_token_info(self, token):
+        """Pop the token and return the related information if the token is present, else returns None."""
         return self._tokens.pop(token, None)
 
 
 class DCVAuthenticator(BaseHTTPRequestHandler):
-    """This class handles the authentication for DCV."""
+    """
+    Simple HTTP server to handle NICE DCV authentication process.
+
+    The authentication process to access to a DCV session is performed by the following steps:
+    1. Obtain a Request Token:
+    - an user declares himself and asks for a Request Token for a given DCV Session:
+        - curl -X GET -G http://localhost:<port> -d action=requestToken -d authUser=<username> -d sessionID=<ID>
+    - the authenticator will return a json containing requestToken and accessFile values:
+        - the requestToken must be used as parameter for the Session Token request
+        - the accessFile is used to verify the user identity in the Session Token request
+
+    2. Obtain a DCV Session Token:
+    - the user must create an "access file" in the AUTHORIZATION_FILE_DIR, named as the retrieved accessFile value
+    - the user asks for a SessionToken (the real token to access to the DCV session)
+        - curl -X GET -G http://localhost:<port> -d action=sessionToken -d requestToken=<tr>
+    - the authenticator verifies the owner of the access file, the validity of the requestToken and returns
+      a Session Token
+    - the user can use the retrieved Session Token to connect to the DCV session.
+
+    3. DCV connection:
+    - the Session Token must be used in the web browser to access to the DCV Session
+    - the DCV process, running in the same instance of the authenticator, will ask to validate the token:
+        - curl -k http://localhost:<port> -d sessionId=<session-id> -d authenticationToken=<token>
+    - the authenticator verifies the validity of the authenticationToken and permits the user to access to the session.
+    """
 
     class IncorrectRequestException(Exception):
         pass
 
     USER_REGEX = r"^[a-z_]([a-z0-9_-]{0,31}|[a-z0-9_-]{0,30}\$)$"
-    SESSION_REGEX = r"^([a-zA-Z0-9_-]{0,128})$"
+    SESSION_ID_REGEX = r"^([a-zA-Z0-9_-]{0,128})$"
     TOKEN_REGEX = r"^([a-zA-Z0-9_-]{256})$"
-    MAX_NUMBER_OF_TR = 500
-    MAX_NUMBER_OF_TS = 100
-    SECONDS_OF_LIFE_TR = 10
-    SECONDS_OF_LIFE_TS = 30
 
-    RequestTokenValues = namedtuple("RequestTokenValues", "user dcv_session_id creation_time access_file")
-    SessionTokenValues = namedtuple("SessionTokenValues", "user dcv_session_id creation_time")
+    MAX_NUMBER_OF_REQUEST_TOKENS = 500
+    MAX_NUMBER_OF_SESSION_TOKENS = 100
+    REQUEST_TOKEN_EXPIRE_SECONDS = 10
+    SESSION_TOKEN_EXPIRE_SECONDS = 30
 
-    _request_token_manager = OneTimeTokenHandler(MAX_NUMBER_OF_TR)
-    _session_token_manager = OneTimeTokenHandler(MAX_NUMBER_OF_TS)
-    _request_token_ttl = timedelta(seconds=SECONDS_OF_LIFE_TR)
-    _session_token_ttl = timedelta(seconds=SECONDS_OF_LIFE_TS)
+    # Define the information associated to a specific token
+    RequestTokenInfo = namedtuple("RequestTokenInfo", "user dcv_session_id creation_time access_file")
+    SessionTokenInfo = namedtuple("SessionTokenInfo", "user dcv_session_id creation_time")
+
+    # Define two token handlers with different capacity and expiration
+    request_token_manager = OneTimeTokenHandler(max_number_of_tokens=MAX_NUMBER_OF_REQUEST_TOKENS)
+    request_token_ttl = timedelta(seconds=REQUEST_TOKEN_EXPIRE_SECONDS)
+    session_token_manager = OneTimeTokenHandler(max_number_of_tokens=MAX_NUMBER_OF_SESSION_TOKENS)
+    session_token_ttl = timedelta(seconds=SESSION_TOKEN_EXPIRE_SECONDS)
 
     def do_GET(self):  # noqa N802
         """
-        Handle user add-user request.
+        Handle GET requests coming from the user to obtain request and session tokens.
 
         The format of the request should be:
             curl -X GET -G http://localhost:<port> -d action=requestToken -d authUser=<username> -d sessionID=<ID>
             curl -X GET -G http://localhost:<port> -d action=sessionToken -d requestToken=<tr>
         """
         try:
+            # validate number of parameters
             parameters = dict(parse_qsl(urlparse(self.path).query))
             if not parameters or len(parameters) > 3:
                 raise DCVAuthenticator.IncorrectRequestException(
                     "Incorrect number of parameters passed.\nParameters: {0}".format(parameters)
                 )
-            action = self._get_values_from_parameters(parameters, ["action"])[0]
+
+            # evaluate action parameter
+            action = self._extract_parameters_values(parameters, ["action"])[0]
             if action == "requestToken":
-                username, session_id = self._get_values_from_parameters(parameters, ["authUser", "sessionID"])
+                username, session_id = self._extract_parameters_values(parameters, ["authUser", "sessionID"])
                 result = self._get_request_token(username, session_id)
             elif action == "sessionToken":
-                request_token = self._get_values_from_parameters(parameters, ["requestToken"])[0]
+                request_token = self._extract_parameters_values(parameters, ["requestToken"])[0]
                 result = self._get_session_token(request_token)
             else:
                 raise DCVAuthenticator.IncorrectRequestException("The action specified is not correct")
+
             self._set_headers(400, content="application/json")
             self.wfile.write(result.encode())
+
         except DCVAuthenticator.IncorrectRequestException as e:
             self.log_message("ERROR: {0}".format(e))
             self._return_bad_request(e)
 
     def do_POST(self):  # noqa N802
         """
-        Handle DCV post request.
+        Handle POST requests, coming from NICE DCV server.
 
         The format of the request is the following:
             curl -k http://localhost:<port> -d sessionId=<session-id> -d authenticationToken=<token>
@@ -134,7 +173,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 raise DCVAuthenticator.IncorrectRequestException(
                     "Incorrect number of parameters passed.\nParameters: {0}".format(parameters)
                 )
-            session_token, session_id = self._get_values_from_parameters(
+            session_token, session_id = self._extract_parameters_values(
                 parameters, ["authenticationToken", "sessionId"]
             )
 
@@ -143,6 +182,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 self._return_auth_ok(username=authorized_user)
             else:
                 raise DCVAuthenticator.IncorrectRequestException("The session token is not valid")
+
         except DCVAuthenticator.IncorrectRequestException as e:
             self.log_message("ERROR: {0}".format(e))
             self._return_auth_ko(e)
@@ -175,82 +215,113 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         self.wfile.write("{0}\n".format(message).encode())
 
     @staticmethod
-    def _get_values_from_parameters(parameters, keys):
+    def _extract_parameters_values(parameters, keys):
         try:
             return [parameters[key] for key in keys]
         except KeyError:
             raise DCVAuthenticator.IncorrectRequestException(
-                "Incorrect parameters for the request token\n" "They should be {0}".format(", ".join(keys))
+                "Incorrect parameters for the request token\nThey should be {0}".format(", ".join(keys))
             )
 
     @classmethod
-    def _check_auth(cls, session_id, token):
-        DCVAuthenticator._validate_request(session_id, DCVAuthenticator.SESSION_REGEX, "sessionid")
-        DCVAuthenticator._validate_request(token, DCVAuthenticator.TOKEN_REGEX, "session token")
-        values = cls._session_token_manager.get_token_value(token)
+    def _check_auth(cls, session_id, session_token):
+        """Check session token expiration to see if it is still valid for the given DCV session id."""
+
+        # validate session and session token
+        DCVAuthenticator._validate_param(session_id, DCVAuthenticator.SESSION_ID_REGEX, "sessionId")
+        DCVAuthenticator._validate_param(session_token, DCVAuthenticator.TOKEN_REGEX, "sessionToken")
+
+        # search for token in the internal authenticator token storage
+        token_info = cls.session_token_manager.get_token_info(session_token)
         if (
-                values
-                and values.dcv_session_id == session_id
-                and datetime.utcnow() - values.creation_time <= cls._session_token_ttl
+            token_info
+            and token_info.dcv_session_id == session_id
+            and datetime.utcnow() - token_info.creation_time <= cls.session_token_ttl
         ):
-            return values.user
+            return token_info.user
 
     @classmethod
     def _get_request_token(cls, user, session_id):
-        DCVAuthenticator._validate_request(user, DCVAuthenticator.USER_REGEX, "authUser")
-        DCVAuthenticator._validate_request(session_id, DCVAuthenticator.SESSION_REGEX, "sessionId")
+        """
+        Obtain the request token and the "access file" name required to obtain the session token.
+
+        Generate a Request token, store in memory and returns a json containing the token itself
+        and the name of the file the user must create in the AUTHORIZATION_FILE_DIR.
+        """
+        # validate user and session
+        DCVAuthenticator._validate_param(user, DCVAuthenticator.USER_REGEX, "authUser")
+        DCVAuthenticator._validate_param(session_id, DCVAuthenticator.SESSION_ID_REGEX, "sessionId")
         DCVAuthenticator._verify_session_existence(user, session_id)
+
+        # create and register internally a request token to use to retrieve the session token
         request_token = generate_random_token(256)
         access_file = generate_sha512_hash(request_token)
-        cls._request_token_manager.add_token(
-            request_token, DCVAuthenticator.RequestTokenValues(user, session_id, datetime.utcnow(), access_file)
+        cls.request_token_manager.add_token(
+            request_token, DCVAuthenticator.RequestTokenInfo(user, session_id, datetime.utcnow(), access_file)
         )
-        return json.dumps({"requestToken": request_token, "requiredFile": access_file})
+
+        return json.dumps({"requestToken": request_token, "accessFile": access_file})
 
     @classmethod
     def _get_session_token(cls, request_token):
-        DCVAuthenticator._validate_request(request_token, DCVAuthenticator.TOKEN_REGEX, "requestToken")
-        values = cls._request_token_manager.get_token_value(request_token)
-        if not values:
-            raise DCVAuthenticator.IncorrectRequestException("The requestToken parameter is not a valid requestToken")
+        """
+        Obtain the session token to connect to the DCV session.
 
-        tr_time = values.creation_time
-        user = values.user
-        session_id = values.dcv_session_id
-        access_file = values.access_file
-        if datetime.utcnow() - tr_time > cls._request_token_ttl:
+        Generate a Session token, store in memory and returns a json containing the token itself.
+        """
+        DCVAuthenticator._validate_param(request_token, DCVAuthenticator.TOKEN_REGEX, "requestToken")
+
+        # retrieve request token information to validate it
+        token_info = cls.request_token_manager.get_token_info(request_token)
+        if not token_info:
+            raise DCVAuthenticator.IncorrectRequestException("The requestToken parameter is not valid")
+        user = token_info.user
+        session_id = token_info.dcv_session_id
+        access_file = token_info.access_file
+
+        # verify token expiration
+        if datetime.utcnow() - token_info.creation_time > cls.request_token_ttl:
             raise DCVAuthenticator.IncorrectRequestException("The requestToken is not valid anymore")
 
+        # verify user by checking if the access_file is created by the user asking the session token
         try:
-            path = "{0}/{1}".format(AUTHORIZATION_FILE_DIR, access_file)
-            file_details = os.stat(path)
+            access_file_path = "{0}/{1}".format(AUTHORIZATION_FILE_DIR, access_file)
+            file_details = os.stat(access_file_path)
             if getpwuid(file_details.st_uid).pw_name != user:
-                raise DCVAuthenticator.IncorrectRequestException("The user is not the one that created the file")
-            if datetime.utcnow() - datetime.utcfromtimestamp(file_details.st_mtime) > cls._request_token_ttl:
-                raise DCVAuthenticator.IncorrectRequestException("The file has expired")
-            os.remove(path)
+                raise DCVAuthenticator.IncorrectRequestException("The user is not the one that created the access file")
+            if datetime.utcnow() - datetime.utcfromtimestamp(file_details.st_mtime) > cls.request_token_ttl:
+                raise DCVAuthenticator.IncorrectRequestException("The access file has expired")
+            os.remove(access_file_path)
         except OSError:
-            raise DCVAuthenticator.IncorrectRequestException("The file created by the user does not exist")
+            raise DCVAuthenticator.IncorrectRequestException("The access file does not exist")
 
+        # create and register internally a session token
         DCVAuthenticator._verify_session_existence(user, session_id)
         session_token = generate_random_token(256)
-        cls._session_token_manager.add_token(
-            session_token, DCVAuthenticator.SessionTokenValues(user, session_id, datetime.utcnow())
+        cls.session_token_manager.add_token(
+            session_token, DCVAuthenticator.SessionTokenInfo(user, session_id, datetime.utcnow())
         )
+
         return json.dumps({"sessionToken": session_token})
 
     @staticmethod
-    def _validate_request(string_to_test, regex, resource_name):
+    def _validate_param(string_to_test, regex, resource_name):
         if not re.match(regex, string_to_test):
-            raise DCVAuthenticator.IncorrectRequestException("The {0} parameter is not a valid.".format(resource_name))
+            raise DCVAuthenticator.IncorrectRequestException("The {0} parameter is not valid".format(resource_name))
 
-    # TODO Once the DCV team updates their code and allows list-session to list all session even for non-root user, we
-    # should update this code.
     @staticmethod
     def _is_session_valid(user, session_id):
-        # we remove the first and the last because they are the heading and empty, respectively
+        """
+        Verify if the DCV session exists and the ownership.
+
+        # We are using ps aux to retrieve the list of sessions
+        # because currently DCV doesn't allow list-session to list all session even for non-root user.
+        # TODO change this method if DCV updates his behaviour.
+        """
+        # Remove the first and the last because they are the heading and empty, respectively
         processes = subprocess.check_output(["ps", "aux"]).decode("utf-8").split("\n")[1:-1]
-        # we check that the filter is empty
+
+        # Check the filter is empty
         if not next(filter(lambda x: DCVAuthenticator.is_process_valid(x, user, session_id), processes), None):
             raise DCVAuthenticator.IncorrectRequestException("The given session for the user does not exists")
 
@@ -267,10 +338,11 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         session_name_index = 12
         user_index = 0
         dcv_agent_path = "/usr/libexec/dcv/dcvagent"
+
         return (
-                fields[command_index] == dcv_agent_path
-                and fields[user_index] == user
-                and fields[session_name_index] == session_id
+            fields[command_index] == dcv_agent_path
+            and fields[user_index] == user
+            and fields[session_name_index] == session_id
         )
 
 
@@ -278,20 +350,11 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
 
 
-def set_server_logging(server):
-    log_file = open(LOG_FILE_PATH, "w")
-    os.chmod(LOG_FILE_PATH, 0o644)
-    server.log_file = log_file
-
-
-def run_server(port, certificate=None, key=None):
+def _run_server(port, certificate=None, key=None):
     """
     This class run the external authenticator server on localhost.
 
-    The external authenticator *must* be run as a separate user, it works in two phase: first you wanna make a request
-    like:
-    curl -X GET -G http://localhost:<port> -d action=requestToken -d authUser=<username> -d sessionID=<ID>
-    curl -X GET -G http://localhost:<port> -d action=sessionToken -d requestToken=<tr>
+    The external authenticator server *must* run with an appropriate user.
 
     :param port: the port in which you want to start the server
     :param certificate: the certificate to use if https
@@ -299,7 +362,12 @@ def run_server(port, certificate=None, key=None):
     """
     server_address = ("localhost", port)
     httpd = ThreadedHTTPServer(server_address, DCVAuthenticator)
-    set_server_logging(httpd)
+
+    # set server logging
+    log_file = open(LOG_FILE_PATH, "w")
+    os.chmod(LOG_FILE_PATH, 0o644)
+    httpd.log_file = log_file
+
     if certificate:
         if key:
             httpd.socket = ssl.wrap_socket(httpd.socket, certfile=certificate, keyfile=key, server_side=True)
@@ -313,13 +381,14 @@ def run_server(port, certificate=None, key=None):
     httpd.serve_forever()
 
 
-def get_arguments():
-    parser = argparse.ArgumentParser(description="Execute the ParallelCluster External Authenticator")
-    parser.add_argument("--port", help="The port in which you want to start the server", type=int)
+def _parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Execute the ParallelCluster DCV External Authenticator")
+    parser.add_argument("--port", help="The port in which you want to start the HTTP server", type=int)
     parser.add_argument(
-        "--certificate", help="The certificate to use for the external authenticator to run in HTTPS. Has to be .pem"
+        "--certificate", help="The certificate to use to run in HTTPS. It must be a .pem file"
     )
-    parser.add_argument("--key", help="The .key of the certificate, if not included in it")
+    parser.add_argument("--key", help="The .key of the certificate, if not included in it.")
     return parser.parse_args()
 
 
@@ -336,10 +405,10 @@ def generate_sha512_hash(*args):
 
 def main():
     try:
-        args = get_arguments()
-        # cleaning up the directory containing old files
+        args = _parse_args()
+        # clean up the directory containing old files
         shutil.rmtree(AUTHORIZATION_FILE_DIR, ignore_errors=True)
-        run_server(port=args.port if args.port else 8444, certificate=args.certificate, key=args.key)
+        _run_server(port=args.port if args.port else 8444, certificate=args.certificate, key=args.key)
     except KeyboardInterrupt:
         print("Closing the server")
     except Exception as e:

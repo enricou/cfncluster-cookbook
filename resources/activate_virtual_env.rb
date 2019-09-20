@@ -1,6 +1,8 @@
 resource_name :activate_virtual_env
 provides :activate_virtual_env
 
+# Resource to create a Python virtual environment for a given user and install a list of packages on it
+
 property :pyenv_name, String, name_property: true
 property :pyenv_path, String, required: true
 property :pyenv_user, String, default: 'root'
@@ -16,7 +18,7 @@ action :run do
   end
 
   unless new_resource.requirements_path.empty?
-    # Install requirements file
+    # Copy requirements file
     cookbook_file "#{new_resource.pyenv_path}/requirements.txt" do
       source new_resource.requirements_path
       owner new_resource.pyenv_user
@@ -24,6 +26,7 @@ action :run do
       mode '0755'
     end
 
+    # Install given requirements in the virtual environment
     pyenv_pip "#{new_resource.pyenv_path}/requirements.txt" do
       virtualenv new_resource.pyenv_path
       requirement true

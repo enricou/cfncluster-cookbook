@@ -17,9 +17,9 @@ stdout_logfile = /var/log/jobwatcher
 
 <% if node['cfncluster']['dcv_enabled'] == "master" -%>
 [program:pcluster_dcv_ext_auth]
-command = <%= node['cfncluster']['dcv_ext_auth_virtualenv_path'] %>/bin/python <%= node['cfncluster']['dcv']['ext_auth_user_home'] %>/pcluster_dcv_ext_auth.py
+command = <%= node['cfncluster']['dcv']['ext_auth_virtualenv_path'] %>/bin/python <%= node['cfncluster']['dcv']['ext_auth_user_home'] %>/pcluster_dcv_ext_auth.py
       --port <%= Integer(node['cfncluster']['dcv_port']) + 1 %>
-      --certificate <%= node['cfncluster']['dcv']['certificate'] %>
+      --certificate <%= node['cfncluster']['dcv']['ext_auth_certificate'] %>
 user = <%= node['cfncluster']['dcv']['ext_auth_user'] %>
 environment = HOME="<%= node['cfncluster']['dcv']['ext_auth_user_home'] %>",USER="<%= node['cfncluster']['dcv']['ext_auth_user'] %>"
 <% end -%>
