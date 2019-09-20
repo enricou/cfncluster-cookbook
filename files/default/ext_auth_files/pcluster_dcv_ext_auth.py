@@ -81,9 +81,9 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
     MAX_NUMBER_OF_TS = 100
     SECONDS_OF_LIFE_TR = 10
     SECONDS_OF_LIFE_TS = 30
-    SALT = generate_random_token(256)
 
-    DCVAuthTokenValues = namedtuple("ExtAuthTokenValues", "user dcv_session_id creation_time")
+    RequestTokenValues = namedtuple("RequestTokenValues", "user dcv_session_id creation_time access_file")
+    SessionTokenValues = namedtuple("SessionTokenValues", "user dcv_session_id creation_time")
 
     _request_token_manager = OneTimeTokenHandler(MAX_NUMBER_OF_TR)
     _session_token_manager = OneTimeTokenHandler(MAX_NUMBER_OF_TS)
@@ -201,14 +201,11 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         DCVAuthenticator._validate_request(session_id, DCVAuthenticator.SESSION_REGEX, "sessionId")
         DCVAuthenticator._verify_session_existence(user, session_id)
         request_token = generate_random_token(256)
-        filename = generate_sha512_hash(request_token, DCVAuthenticator.SALT)
+        access_file = generate_sha512_hash(request_token)
         cls._request_token_manager.add_token(
-            request_token, DCVAuthenticator.DCVAuthTokenValues(user, session_id, datetime.utcnow())
+            request_token, DCVAuthenticator.RequestTokenValues(user, session_id, datetime.utcnow(), access_file)
         )
-        cls._request_token_manager.add_token(
-            request_token, DCVAuthenticator.DCVAuthTokenValues(user, session_id, datetime.utcnow())
-        )
-        return json.dumps({"requestToken": request_token, "requiredFile": filename})
+        return json.dumps({"requestToken": request_token, "requiredFile": access_file})
 
     @classmethod
     def _get_session_token(cls, request_token):
@@ -220,12 +217,12 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         tr_time = values.creation_time
         user = values.user
         session_id = values.dcv_session_id
+        access_file = values.access_file
         if datetime.utcnow() - tr_time > cls._request_token_ttl:
             raise DCVAuthenticator.IncorrectRequestException("The requestToken is not valid anymore")
 
-        file_name = generate_sha512_hash(request_token, DCVAuthenticator.SALT)
         try:
-            path = "{0}/{1}".format(AUTHORIZATION_FILE_DIR, file_name)
+            path = "{0}/{1}".format(AUTHORIZATION_FILE_DIR, access_file)
             file_details = os.stat(path)
             if getpwuid(file_details.st_uid).pw_name != user:
                 raise DCVAuthenticator.IncorrectRequestException("The user is not the one that created the file")
@@ -238,7 +235,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         DCVAuthenticator._verify_session_existence(user, session_id)
         session_token = generate_random_token(256)
         cls._session_token_manager.add_token(
-            session_token, DCVAuthenticator.DCVAuthTokenValues(user, session_id, datetime.utcnow())
+            session_token, DCVAuthenticator.SessionTokenValues(user, session_id, datetime.utcnow())
         )
         return json.dumps({"sessionToken": session_token})
 
@@ -327,10 +324,13 @@ def get_arguments():
 
 
 def generate_sha512_hash(*args):
-    """This function generates a sha512 """
+    """Generate a salted sha512 of the given token."""
+    salt = generate_random_token(256)
+
     hash_handler = hashlib.sha512()
-    for arg in args:
-        hash_handler.update(str(arg).encode("utf-8"))
+    for item in args, salt:
+        hash_handler.update(str(item).encode("utf-8"))
+
     return hash_handler.hexdigest()
 
 
