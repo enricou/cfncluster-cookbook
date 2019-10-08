@@ -27,11 +27,15 @@ end
 
 # Configure the system to enable NICE DCV to have direct access to the Linux server's GPU and enable GPU sharing.
 def allow_gpu_acceleration
-  package "xorg-x11-server-Xorg"
 
-  # Udate the xorg.conf to set up NVIDIA drivers.
+  # Turn off X
+  execute "Turn off X" do
+    command "systemctl set-default multi-user.target"
+  end
+
+  # Update the xorg.conf to set up NVIDIA drivers.
   # NOTE: --enable-all-gpus parameter is needed to support servers with more than one NVIDIA GPU.
-  execute "set up Nvidia drivers for X configuration" do
+  execute "Set up Nvidia drivers for X configuration" do
     user 'root'
     command "nvidia-xconfig --preserve-busid --enable-all-gpus"
   end
@@ -44,7 +48,7 @@ def allow_gpu_acceleration
   end
 
   # Configure the X server to start automatically when the Linux server boots and start the X server in background
-  bash 'launch X' do
+  bash 'Launch X' do
     user 'root'
     code <<-SETUPX
       systemctl set-default graphical.target
@@ -53,7 +57,7 @@ def allow_gpu_acceleration
   end
 
   # Verify that the X server is running
-  execute 'wait for X to start' do
+  execute 'Wait for X to start' do
     user 'root'
     command "pidof X"
     retries 5

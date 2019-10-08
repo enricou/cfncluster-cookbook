@@ -52,6 +52,9 @@ if node['platform'] == 'centos' and node['platform_version'].to_i == 7
         command 'yum -y install @gnome'
       end
 
+      # Install X Window System (required when using GPU acceleration)
+      package "xorg-x11-server-Xorg"
+
       # Extract DCV packages
       unless File.exist?(dcv_tarball)
         remote_file dcv_tarball do
