@@ -71,7 +71,7 @@ main() {
 
     shared_folder_path="$1"
     user=$(whoami)
-    os=$(< /tmp/dna.json jq -r .cfncluster.cfn_base_os)
+    os=$(< /etc/chef/dna.json jq -r .cfncluster.cfn_base_os)
 
     if [[ ${os} != "centos7" ]]; then
         _fail "Non supported OS"
