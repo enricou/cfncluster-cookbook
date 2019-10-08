@@ -65,11 +65,11 @@ default['cfncluster']['efa']['installer_url'] = 'https://s3-us-west-2.amazonaws.
 default['cfncluster']['env2']['url'] = 'https://sourceforge.net/projects/env2/files/env2/download'
 # DCV
 default['cfncluster']['dcv']['installed'] = 'yes'
-default['cfncluster']['dcv']['version'] = '2019.0-7318'
-default['cfncluster']['dcv']['url'] = "https://d1uj6qtbmh3dt5.cloudfront.net/2019.0/Servers/nice-dcv-#{node['cfncluster']['dcv']['version']}-el7.tgz"
-default['cfncluster']['dcv']['server'] = "nice-dcv-server-#{node['cfncluster']['dcv']['version']}-1.el7.x86_64.rpm"  # NICE DCV server package
-default['cfncluster']['dcv']['xdcv'] = "nice-xdcv-2019.0.224-1.el7.x86_64.rpm"  # required to create virtual sessions
-default['cfncluster']['dcv']['gl'] = "nice-dcv-gl-2019.0.529-1.el7.x86_64.rpm"  # required to enable GPU sharing
+default['cfncluster']['dcv']['version'] = '2019.1-7423'
+default['cfncluster']['dcv']['url'] = "https://d1uj6qtbmh3dt5.cloudfront.net/2019.1/Servers/nice-dcv-#{node['cfncluster']['dcv']['version']}-el7.tgz"
+default['cfncluster']['dcv']['server'] = "nice-dcv-server-2019.1.7423-1.el7.x86_64.rpm"  # NICE DCV server package
+default['cfncluster']['dcv']['xdcv'] = "nice-xdcv-2019.1.226-1.el7.x86_64.rpm"  # required to create virtual sessions
+default['cfncluster']['dcv']['gl'] = "nice-dcv-gl-2019.1.554-1.el7.x86_64.rpm"  # required to enable GPU sharing
 # DCV external authenticator configuration
 default['cfncluster']['dcv']['ext_auth_user'] = "dcvextauth"
 default['cfncluster']['dcv']['ext_auth_user_home'] = "/home/#{node['cfncluster']['dcv']['ext_auth_user']}"
