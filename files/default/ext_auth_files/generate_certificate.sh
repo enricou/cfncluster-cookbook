@@ -16,29 +16,37 @@
 # Generate a 5 year self-signed certificate and a new RSA private key and copy in the given path.
 # The command must be executed as root.
 
-# Usage:  ./generate_certificate.sh "/etc/parallelcluster/ext-auth-certificate.pem" dcvextauth dcv
+# Usage:
+# ./generate_certificate.sh \
+#     "/etc/parallelcluster/ext-auth-certificate.pem" \
+#     "/etc/parallelcluster/ext-auth-private-key.pem" \
+#     dcv-ext-auth-user \
+#     dcv-ext-auth-user-group
 
 _check_set() {
-  file="$1"
-  message="$2"
-  if [[ -z "${file}" ]]; then
-      >&2 echo "${message}"
-      exit 1
-  fi
+    file="$1"
+    message="$2"
+    if [[ -z "${file}" ]]; then
+        >&2 echo "${message}"
+        exit 1
+    fi
 }
 
 main() {
-  path="$1"
-  user="$2"
-  group="$3"
-  _check_set "${path}" "Path required"
-  _check_set "${user}" "User required"
-  _check_set "${group}" "Group required"
+    certificatePath="$1"
+    privateKeyPath="$2"
+    user="$3"
+    group="$4"
 
-  # Generate a new certificate and a new RSA private key
-  openssl req -new -x509 -days 1825 -subj "/CN=localhost" -nodes -out "${path}" -keyout "${path}"
-  chmod 440 "${path}"
-  chown "${user}":"${group}" "${path}"
+    _check_set "${certificatePath}" "Certificate file path required"
+    _check_set "${privateKeyPath}" "Private Key file path required"
+    _check_set "${user}" "User required"
+    _check_set "${group}" "Group required"
+
+    # Generate a new certificate and a new RSA private key
+    openssl req -newkey rsa:2048 -sha256 -x509 -days 1825 -subj "/CN=localhost" -out "${certificatePath}" -nodes -keyout "${privateKeyPath}"
+    chmod 440 "${certificatePath}" "${privateKeyPath}"
+    chown "${user}":"${group}" "${certificatePath}" "${privateKeyPath}"
 }
 
 main "$@"

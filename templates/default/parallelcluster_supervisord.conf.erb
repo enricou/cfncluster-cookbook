@@ -20,6 +20,7 @@ stdout_logfile = /var/log/jobwatcher
 command = <%= node['cfncluster']['dcv']['ext_auth_virtualenv_path'] %>/bin/python <%= node['cfncluster']['dcv']['ext_auth_user_home'] %>/pcluster_dcv_ext_auth.py
       --port <%= Integer(node['cfncluster']['dcv_port']) + 1 %>
       --certificate <%= node['cfncluster']['dcv']['ext_auth_certificate'] %>
+      --key <%= node['cfncluster']['dcv']['ext_auth_private_key'] %>
 user = <%= node['cfncluster']['dcv']['ext_auth_user'] %>
 environment = HOME="<%= node['cfncluster']['dcv']['ext_auth_user_home'] %>",USER="<%= node['cfncluster']['dcv']['ext_auth_user'] %>"
 <% end -%>

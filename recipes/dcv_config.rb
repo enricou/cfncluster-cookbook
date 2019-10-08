@@ -81,7 +81,7 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
     mode '0700'
   end
   execute "certificate generation" do
-    command "/etc/parallelcluster/generate_certificate.sh \"#{node['cfncluster']['dcv']['ext_auth_certificate']}\" #{node['cfncluster']['dcv']['ext_auth_user']} dcv"
+    command "/etc/parallelcluster/generate_certificate.sh \"#{node['cfncluster']['dcv']['ext_auth_certificate']}\" \"#{node['cfncluster']['dcv']['ext_auth_private_key']}\" #{node['cfncluster']['dcv']['ext_auth_user']} dcv"
     user 'root'
   end
 

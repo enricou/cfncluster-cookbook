@@ -357,8 +357,8 @@ def _run_server(port, certificate=None, key=None):
     The external authenticator server *must* run with an appropriate user.
 
     :param port: the port in which you want to start the server
-    :param certificate: the certificate to use if https
-    :param key: the key to use if https and it's not in certificate
+    :param certificate: the certificate to use if HTTPSs
+    :param key: the private key to use if HTTPSs
     """
     server_address = ("localhost", port)
     httpd = ThreadedHTTPServer(server_address, DCVAuthenticator)
@@ -388,7 +388,7 @@ def _parse_args():
     parser.add_argument(
         "--certificate", help="The certificate to use to run in HTTPS. It must be a .pem file"
     )
-    parser.add_argument("--key", help="The .key of the certificate, if not included in it.")
+    parser.add_argument("--key", help="The private key of the certificate")
     return parser.parse_args()
 
 
