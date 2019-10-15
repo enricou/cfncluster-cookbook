@@ -36,11 +36,12 @@
 
 AUTHORIZATION_FILE_DIR="/var/spool/dcv_ext_auth"
 DCV_SESSION_FOLDER="${HOME}/.parallelcluster/dcv"
+LOG_FILE_PATH="/var/log/parallelcluster/pcluster_dcv_connect.log"
 
 
 _fail() {
   message=$1
-  >&2 echo "${message}"
+  >&2 echo "ERROR: ${message}"
   exit 1
 }
 
@@ -52,33 +53,51 @@ _check_if_empty() {
   fi
 }
 
+_log() {
+  text=$1
+
+  log_time=$(date "+%Y-%m-%d %H:%M:%S")
+  log_file=${LOG_FILE_PATH}.$(date +%Y%m%d)
+
+  touch ${log_file}
+  if [[ ! -f ${log_file} ]]; then
+    _fail "Unable to create log file ${log_file}. Exiting..";
+  fi
+  echo "[${log_time}]: ${text}" >> ${log_file};
+}
+
 _create_dcv_session() {
     dcv_session_file="$1"
     shared_folder_path="$2"
 
+    _log "Creating a new NICE DCV session..."
     # Generate a random session id
     sessionid=$(shuf -zer -n20  {A..Z} {a..z} {0..9})
     echo "${sessionid}" > "${dcv_session_file}"
     dcv create-session --type virtual --storage-root "${shared_folder_path}" "${sessionid}"
+    _log "NICE DCV session created successfully."
 
     echo "${sessionid}"
 }
 
 main() {
+    _log "--- Initializing NICE DCV authentication... ---"
+
     if [[ -z "$1" ]]; then
-        _fail "The script requires the shared folder as input parameter"
+        _fail "The script requires the shared folder as input parameter."
     fi
 
     shared_folder_path="$1"
     user=$(whoami)
     os=$(< /etc/chef/dna.json jq -r .cfncluster.cfn_base_os)
+    _log "Input parameters: user: ${user}, OS: ${os}, shared_folder_path: ${shared_folder_path}."
 
     if [[ ${os} != "centos7" ]]; then
-        _fail "Non supported OS"
+        _fail "OS not supported."
     fi
 
     if ! systemctl is-active --quiet dcvserver; then
-        _fail "NICE DCV is not active on the given instance"
+        _fail "NICE DCV service is not active on the given instance."
     fi
 
     # Create a session with session storage enabled.
@@ -88,11 +107,13 @@ main() {
         sessionid=$(_create_dcv_session "${dcv_session_file}" "${shared_folder_path}")
     else
         sessionid=$(cat "${dcv_session_file}")
+        _log "Reusing existing NICE DCV session for the current user."
 
         # number of session can either be 0 or 1
         number_of_sessions=$(dcv list-sessions |& grep "${user}" | grep -c "${sessionid}")
         if (( number_of_sessions == 0 )); then
             # There is no running session (e.g. the system has been rebooted)
+            _log "There are no running sessions for the current user, creating a new one.."
             sessionid=$(_create_dcv_session "${dcv_session_file}" "${shared_folder_path}")
         fi
     fi
@@ -102,25 +123,36 @@ main() {
     ext_auth_port=$((dcv_server_port + 1))
 
     # Retrieve Request Token and Access File name
+    _log "Retrieving Request Token and Access File name.."
     user_token_request=$(curl --retry 3 --max-time 5 -s -k -X GET -G "https://localhost:${ext_auth_port}" -d action=requestToken -d authUser="${user}" -d sessionID="${sessionid}")
-    _check_if_empty "${user_token_request}" "Unable to obtain the Request Token from the NICE DCV external authenticator"
+    _check_if_empty "${user_token_request}" "Unable to obtain the Request Token from the NICE DCV external authenticator."
     request_token=$(echo "${user_token_request}" | jq -r .requestToken)
     access_file=$(echo "${user_token_request}" | jq -r .accessFile)
+    _log "Request Token and Access File name obtained successfully."
 
     # Create the access file in the AUTHORIZATION_FILE_DIR with 644 permissions
     # This is used by the external authenticator to verify the user declares himself as who he really is
+    _log "Creating access file.."
     _umask=$(umask)
     umask 0022 && touch "${AUTHORIZATION_FILE_DIR}/${access_file}" && umask ${_umask}
+    if [[ ! -f "${AUTHORIZATION_FILE_DIR}/${access_file}" ]]; then
+        _fail "Unable to create Access File in the NICE DCV external authenticator folder."
+    fi
+    _log "Access file created successfully."
+
 
     # Retrieve Session Token
+    _log "Retrieving Session Token.."
     session_token_request=$(curl --retry 3 --max-time 5 -s -k -X GET -G "https://localhost:${ext_auth_port}" -d action=sessionToken -d requestToken="${request_token}")
-    _check_if_empty "${session_token_request}" "Unable to obtain the Session Token from the NICE DCV external authenticator"
+    _check_if_empty "${session_token_request}" "Unable to obtain the Session Token from the NICE DCV external authenticator."
     session_token=$(echo "${session_token_request}" | jq -r .sessionToken)
+    _log "Session Token obtained successfully."
 
     if [[ -z "${dcv_server_port}" ]]; then
       dcv_server_port=8443
     fi
 
+    _log "--- NICE DCV authentication performed successfully. ---"
     echo "${sessionid} ${dcv_server_port} ${session_token}"
 }
 

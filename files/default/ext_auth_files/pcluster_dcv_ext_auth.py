@@ -34,7 +34,7 @@ import argparse
 from retry.api import retry_call
 
 AUTHORIZATION_FILE_DIR = "/var/spool/dcv_ext_auth"
-LOG_FILE_PATH = "/var/log/parallelcluster/dcv_ext_auth.log"
+LOG_FILE_PATH = "/var/log/parallelcluster/pcluster_dcv_ext_auth.log"
 
 
 def generate_random_token(token_length):
