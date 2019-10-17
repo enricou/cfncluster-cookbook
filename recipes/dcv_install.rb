@@ -26,7 +26,7 @@ end
 
 # Function to install and activate a Python virtual env to run the the External authenticator daemon
 def install_ext_auth_virtual_env
-  return unless File.exist?("#{node['cfncluster']['dcv']['ext_auth_virtualenv_path']}/bin/activate")
+  return if File.exist?("#{node['cfncluster']['dcv']['ext_auth_virtualenv_path']}/bin/activate")
 
   install_pyenv node['cfncluster']['dcv']['ext_auth_user'] do
     python_version node['cfncluster']['python-version']
