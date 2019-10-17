@@ -24,11 +24,6 @@ AUTH_CLASS_MOCK_PATH = AUTH_MODULE_MOCK_PATH + "DCVAuthenticator."
 
 
 class TestOneTimeTokenHandler:
-    def __init__(self):
-        TestOneTimeTokenHandler.test_token_capacity()
-        TestOneTimeTokenHandler.test_token_storage()
-        TestOneTimeTokenHandler.test_one_time_token()
-
     @staticmethod
     def test_token_capacity():
         # Create a token handler with a defined size, add a number of items exceeding the internal capacity
@@ -61,7 +56,9 @@ class TestOneTimeTokenHandler:
 
 
 def test_one_time_token_handler():
-    TestOneTimeTokenHandler()
+    TestOneTimeTokenHandler.test_token_capacity()
+    TestOneTimeTokenHandler.test_token_storage()
+    TestOneTimeTokenHandler.test_one_time_token()
 
 
 def test_token_generator():
