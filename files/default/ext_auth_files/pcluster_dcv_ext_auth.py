@@ -219,7 +219,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
             return [parameters[key] for key in keys]
         except KeyError:
             raise DCVAuthenticator.IncorrectRequestException(
-                "Incorrect parameters for the request token\nThey should be {0}".format(", ".join(keys))
+                "Wrong parameters. Required parameters are {0}".format(", ".join(keys))
             )
 
     @classmethod
