@@ -20,7 +20,6 @@ import json
 import os
 import random
 import re
-import shutil
 import ssl
 import string
 import subprocess
@@ -293,7 +292,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 raise DCVAuthenticator.IncorrectRequestException("The access file has expired")
             os.remove(access_file_path)
         except OSError:
-            raise DCVAuthenticator.IncorrectRequestException("The access file does not exist")
+            raise DCVAuthenticator.IncorrectRequestException("The Access File does not exist")
 
         # create and register internally a session token
         DCVAuthenticator._verify_session_existence(user, session_id)
@@ -403,11 +402,16 @@ def generate_sha512_hash(*args):
     return hash_handler.hexdigest()
 
 
+def _prepare_auth_folder():
+    """Delete old authorization files."""
+    for access_file in os.listdir(AUTHORIZATION_FILE_DIR):
+        os.remove(os.path.join(AUTHORIZATION_FILE_DIR, access_file))
+
+
 def main():
     try:
         args = _parse_args()
-        # clean up the directory containing old files
-        shutil.rmtree(AUTHORIZATION_FILE_DIR, ignore_errors=True)
+        _prepare_auth_folder()
         _run_server(port=args.port if args.port else 8444, certificate=args.certificate, key=args.key)
     except KeyboardInterrupt:
         print("Closing the server")
