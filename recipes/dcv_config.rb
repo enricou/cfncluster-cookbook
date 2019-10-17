@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 #
 # Cookbook Name:: aws-parallelcluster
 # Recipe:: dcv_config
@@ -16,14 +17,13 @@
 # This recipe install the prerequisites required to use NICE DCV on a Linux server
 # Source: https://docs.aws.amazon.com/en_us/dcv/latest/adminguide/setting-up-installing-linux-prereq.html
 
-# TODO Detect if the instance is a GPU instance.
-def is_graphic_instance
-  instance_type = get_instance_type
-  is_graphic_instance = true if instance_type.start_with?('g2')
+# TODO: Detect if the instance is a GPU instance.
+def graphic_instance?
+  #instance_type = get_instance_type
+  #is_graphic_instance = true if instance_type.start_with?('g2')
 
   false
 end
-
 
 # Configure the system to enable NICE DCV to have direct access to the Linux server's GPU and enable GPU sharing.
 def allow_gpu_acceleration
@@ -65,9 +65,8 @@ def allow_gpu_acceleration
   end
 end
 
-
 if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['cfncluster']['cfn_node_type'] == "MasterServer"
-  node.default['cfncluster']['dcv']['is_graphic_instance'] = is_graphic_instance
+  node.default['cfncluster']['dcv']['is_graphic_instance'] = graphic_instance?
 
   if node.default['cfncluster']['dcv']['is_graphic_instance']
     # Enable graphic acceleration in dcv conf file for graphic instances.
@@ -94,7 +93,7 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
     mode '0755'
   end
 
-  # Create directory for the external authenticator to
+  # Create directory for the external authenticator to store access file created by the users
   directory '/var/spool/dcv_ext_auth' do
     owner node['cfncluster']['dcv']['ext_auth_user']
     mode '1733'
