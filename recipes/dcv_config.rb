@@ -75,7 +75,7 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
 
   # Install utility file to generate HTTPs certificates for the DCV external authenticator and generate a new one
   cookbook_file "/etc/parallelcluster/generate_certificate.sh" do
-    source 'ext_auth_files/generate_certificate.sh'
+    source 'dcv/generate_certificate.sh'
     owner 'root'
     mode '0700'
   end
@@ -109,7 +109,7 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
 
   # Install DCV external authenticator
   cookbook_file "#{node['cfncluster']['dcv']['ext_auth_user_home']}/pcluster_dcv_ext_auth.py" do
-    source 'ext_auth_files/pcluster_dcv_ext_auth.py'
+    source 'dcv/pcluster_dcv_ext_auth.py'
     owner node['cfncluster']['dcv']['ext_auth_user']
     mode '0700'
   end

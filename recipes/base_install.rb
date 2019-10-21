@@ -178,7 +178,7 @@ include_recipe "aws-parallelcluster::_lustre_install"
 # Install DCV recipe
 # We add here the script so that in all machines it can do error handling
 cookbook_file "#{node['cfncluster']['scripts_dir']}/pcluster_dcv_connect.sh" do
-  source 'ext_auth_files/pcluster_dcv_connect.sh'
+  source 'dcv/pcluster_dcv_connect.sh'
   owner 'root'
   group 'root'
   mode '0755'
