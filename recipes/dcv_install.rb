@@ -36,7 +36,6 @@ def install_ext_auth_virtual_env
     pyenv_path node['cfncluster']['dcv']['ext_auth_virtualenv_path']
     pyenv_user node['cfncluster']['dcv']['ext_auth_user']
     python_version node['cfncluster']['python-version']
-    requirements_path "ext_auth_files/requirements.txt"
   end
 end
 

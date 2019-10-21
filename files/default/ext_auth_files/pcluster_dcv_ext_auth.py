@@ -9,31 +9,51 @@
 # or in the "LICENSE.txt" file accompanying this file.
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
-from __future__ import print_function
-from future.backports import OrderedDict
-from future.backports.http.server import BaseHTTPRequestHandler, HTTPServer
-from future.backports.socketserver import ThreadingMixIn
-from future.backports.urllib.parse import parse_qsl, urlparse
-
+import argparse
+import errno
 import hashlib
 import json
+import logging
 import os
 import random
 import re
 import ssl
 import string
 import subprocess
-import sys
-from collections import namedtuple
+import time
+from collections import OrderedDict, namedtuple
 from datetime import datetime, timedelta
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from logging.handlers import RotatingFileHandler
+from socketserver import ThreadingMixIn
+from urllib.parse import parse_qsl, urlparse
+
 from pwd import getpwuid
-
-import argparse
-
-from retry.api import retry_call
 
 AUTHORIZATION_FILE_DIR = "/var/spool/dcv_ext_auth"
 LOG_FILE_PATH = "/var/log/parallelcluster/pcluster_dcv_ext_auth.log"
+
+
+def retry(func, func_args, attempts=1, wait=0):
+    """
+    Calls a function and re-executes it if it fails.
+
+    :param func: the function to execute.
+    :param func_args: the positional arguments of the function.
+    :param attempts: the maximum number of attempts. Default: 1.
+    :param wait: delay between attempts. Default: 0.
+    :returns: the result of the function.
+    """
+    while attempts:
+        try:
+            return func(*func_args)
+        except Exception as e:
+            attempts -= 1
+            if not attempts:
+                raise e
+
+            LOGGER.info("{0}, retrying in {1} seconds..".format(e, wait))
+            time.sleep(wait)
 
 
 def generate_random_token(token_length):
@@ -132,6 +152,7 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
             curl -X GET -G http://localhost:<port> -d action=sessionToken -d requestToken=<tr>
         """
         try:
+            LOGGER.info("Validating user request..")
             # validate number of parameters
             parameters = dict(parse_qsl(urlparse(self.path).query))
             if not parameters or len(parameters) > 3:
@@ -148,13 +169,15 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 request_token = self._extract_parameters_values(parameters, ["requestToken"])[0]
                 result = self._get_session_token(request_token)
             else:
-                raise DCVAuthenticator.IncorrectRequestException("The action specified is not correct")
+                raise DCVAuthenticator.IncorrectRequestException(
+                    "The action specified '{0}' is not valid.".format(action)
+                )
 
             self._set_headers(400, content="application/json")
             self.wfile.write(result.encode())
 
         except DCVAuthenticator.IncorrectRequestException as e:
-            self.log_message("ERROR: {0}".format(e))
+            LOGGER.error(e)
             self._return_bad_request(e)
 
     def do_POST(self):  # noqa N802
@@ -183,14 +206,13 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 raise DCVAuthenticator.IncorrectRequestException("The session token is not valid")
 
         except DCVAuthenticator.IncorrectRequestException as e:
-            self.log_message("ERROR: {0}".format(e))
+            LOGGER.error(e)
             self._return_auth_ko(e)
 
-    def log_message(self, formatting, *args):
-        self.server.log_file.write(
-            "{0} - - [{1}] {2}\n".format(self.address_string(), datetime.utcnow(), formatting % args)
-        )
-        self.server.log_file.flush()
+    def log_message(self, fmt, *args):
+        """Override Server log message by removing authentication actions."""
+        if all(auth_action not in args[0] for auth_action in ["requestToken", "sectionToken"]):
+            LOGGER.info(fmt % args)
 
     def _set_headers(self, response, content="text/xml", length=None):
         self.send_response(response)
@@ -247,17 +269,21 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         Generate a Request token, store in memory and returns a json containing the token itself
         and the name of the file the user must create in the AUTHORIZATION_FILE_DIR.
         """
+        LOGGER.info("New request for Request Token from user '{0}' and DCV Session Id '{1}'.".format(user, session_id))
         # validate user and session
         DCVAuthenticator._validate_param(user, DCVAuthenticator.USER_REGEX, "authUser")
         DCVAuthenticator._validate_param(session_id, DCVAuthenticator.SESSION_ID_REGEX, "sessionId")
         DCVAuthenticator._verify_session_existence(user, session_id)
+        LOGGER.info("DCV session id and user are valid.")
 
         # create and register internally a request token to use to retrieve the session token
+        LOGGER.info("Generating new Request Token and Access File..")
         request_token = generate_random_token(256)
         access_file = generate_sha512_hash(request_token)
         cls.request_token_manager.add_token(
             request_token, DCVAuthenticator.RequestTokenInfo(user, session_id, datetime.utcnow(), access_file)
         )
+        LOGGER.info("Request Token and Access File generated correctly.")
 
         return json.dumps({"requestToken": request_token, "accessFile": access_file})
 
@@ -268,21 +294,27 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
 
         Generate a Session token, store in memory and returns a json containing the token itself.
         """
+        LOGGER.info("New request for Session Token.")
         DCVAuthenticator._validate_param(request_token, DCVAuthenticator.TOKEN_REGEX, "requestToken")
 
         # retrieve request token information to validate it
+        LOGGER.info("Validating Request Token..")
         token_info = cls.request_token_manager.get_token_info(request_token)
         if not token_info:
             raise DCVAuthenticator.IncorrectRequestException("The requestToken parameter is not valid")
         user = token_info.user
         session_id = token_info.dcv_session_id
         access_file = token_info.access_file
+        LOGGER.info("Request Token is valid.")
 
         # verify token expiration
+        LOGGER.info("Verifying Request Token..")
         if datetime.utcnow() - token_info.creation_time > cls.request_token_ttl:
             raise DCVAuthenticator.IncorrectRequestException("The requestToken is not valid anymore")
+        LOGGER.info("Request Token is valid.")
 
         # verify user by checking if the access_file is created by the user asking the session token
+        LOGGER.info("Verifying Access File..")
         try:
             access_file_path = "{0}/{1}".format(AUTHORIZATION_FILE_DIR, access_file)
             file_details = os.stat(access_file_path)
@@ -290,16 +322,20 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
                 raise DCVAuthenticator.IncorrectRequestException("The user is not the one that created the access file")
             if datetime.utcnow() - datetime.utcfromtimestamp(file_details.st_mtime) > cls.request_token_ttl:
                 raise DCVAuthenticator.IncorrectRequestException("The access file has expired")
+            LOGGER.info("Access File is valid. User identified correctly.")
             os.remove(access_file_path)
+            LOGGER.info("Access File removed correctly.")
         except OSError:
             raise DCVAuthenticator.IncorrectRequestException("The Access File does not exist")
 
         # create and register internally a session token
+        LOGGER.info("Generating new Session Token..")
         DCVAuthenticator._verify_session_existence(user, session_id)
         session_token = generate_random_token(256)
         cls.session_token_manager.add_token(
             session_token, DCVAuthenticator.SessionTokenInfo(user, session_id, datetime.utcnow())
         )
+        LOGGER.info("Session Token created successfully.")
 
         return json.dumps({"sessionToken": session_token})
 
@@ -317,16 +353,18 @@ class DCVAuthenticator(BaseHTTPRequestHandler):
         # because currently DCV doesn't allow list-session to list all session even for non-root user.
         # TODO change this method if DCV updates his behaviour.
         """
+        LOGGER.info("Verifying NICE DCV session validity..")
         # Remove the first and the last because they are the heading and empty, respectively
         processes = subprocess.check_output(["ps", "aux"]).decode("utf-8").split("\n")[1:-1]
 
         # Check the filter is empty
         if not next(filter(lambda x: DCVAuthenticator.is_process_valid(x, user, session_id), processes), None):
-            raise DCVAuthenticator.IncorrectRequestException("The given session for the user does not exists")
+            raise DCVAuthenticator.IncorrectRequestException("The given session does not exists")
+        LOGGER.info("The NICE DCV session is valid.")
 
     @staticmethod
     def _verify_session_existence(user, session_id):
-        retry_call(DCVAuthenticator._is_session_valid, fargs=[user, session_id], tries=5, delay=1)
+        retry(DCVAuthenticator._is_session_valid, func_args=[user, session_id], attempts=5, wait=1)
 
     @staticmethod
     def is_process_valid(row, user, session_id):
@@ -361,11 +399,6 @@ def _run_server(port, certificate=None, key=None):
     """
     server_address = ("localhost", port)
     httpd = ThreadedHTTPServer(server_address, DCVAuthenticator)
-
-    # set server logging
-    log_file = open(LOG_FILE_PATH, "w")
-    os.chmod(LOG_FILE_PATH, 0o644)
-    httpd.log_file = log_file
 
     if certificate:
         if key:
@@ -408,16 +441,57 @@ def _prepare_auth_folder():
         os.remove(os.path.join(AUTHORIZATION_FILE_DIR, access_file))
 
 
+def fail(message):
+    """
+    Print error message and exit(1).
+
+    :param message: message to print
+    """
+    LOGGER.error(message)
+    exit(1)
+
+
+def _config_logger():
+    """
+    Define a logger for pcluster_dcv_authenticator.
+
+    :return: the logger
+    """
+    try:
+        logfile = os.path.expanduser(LOG_FILE_PATH)
+        logdir = os.path.dirname(logfile)
+        os.makedirs(logdir)
+    except OSError as e:
+        if e.errno == errno.EEXIST and os.path.isdir(logdir):
+            pass
+        else:
+            fail("Cannot create log file (%s). Failed with exception: %s" % (logfile, e))
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
+
+    logfile_handler = RotatingFileHandler(logfile, maxBytes=5 * 1024 * 1024, backupCount=1)
+    logfile_handler.setFormatter(formatter)
+
+    logger = logging.getLogger("pcluster_dcv_authenticator")
+    logger.addHandler(logfile_handler)
+
+    logger.setLevel("INFO")
+    return logger
+
+
+LOGGER = _config_logger()
+
+
 def main():
     try:
+        LOGGER.info("Starting NICE DCV authenticator server")
         args = _parse_args()
         _prepare_auth_folder()
         _run_server(port=args.port if args.port else 8444, certificate=args.certificate, key=args.key)
     except KeyboardInterrupt:
-        print("Closing the server")
+        LOGGER.info("Closing NICE DCV authenticator server")
     except Exception as e:
-        print("Unexpected error of type {0}: {1}".format(type(e).__name__, e))
-        sys.exit(1)
+        fail("Unexpected error of type {0}: {1}".format(type(e).__name__, e))
 
 
 if __name__ == "__main__":
