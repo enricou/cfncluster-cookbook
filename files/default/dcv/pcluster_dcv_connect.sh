@@ -34,7 +34,7 @@
 # Returns the sessionid, the port and the tokenid (256 character long).
 # Example: mysession 8443 adfsaklcxzvsadkhfgsdkhjfag-__bafbdajshsdjfh
 
-AUTHORIZATION_FILE_DIR="/var/spool/dcv_ext_auth"
+AUTHORIZATION_FILE_DIR="/var/spool/parallelcluster/pcluster_dcv_authenticator"
 DCV_SESSION_FOLDER="${HOME}/.parallelcluster/dcv"
 LOG_FILE_PATH="/var/log/parallelcluster/pcluster_dcv_connect.log"
 LOG_FILE_MAX_SIZE=5242880 # 5MB

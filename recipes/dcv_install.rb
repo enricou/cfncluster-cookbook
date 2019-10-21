@@ -26,15 +26,15 @@ end
 
 # Function to install and activate a Python virtual env to run the the External authenticator daemon
 def install_ext_auth_virtual_env
-  return if File.exist?("#{node['cfncluster']['dcv']['ext_auth_virtualenv_path']}/bin/activate")
+  return if File.exist?("#{node['cfncluster']['dcv']['authenticator']['virtualenv_path']}/bin/activate")
 
-  install_pyenv node['cfncluster']['dcv']['ext_auth_user'] do
+  install_pyenv node['cfncluster']['dcv']['authenticator']['user'] do
     python_version node['cfncluster']['python-version']
   end
 
-  activate_virtual_env node['cfncluster']['dcv']['ext_auth_virtualenv'] do
-    pyenv_path node['cfncluster']['dcv']['ext_auth_virtualenv_path']
-    pyenv_user node['cfncluster']['dcv']['ext_auth_user']
+  activate_virtual_env node['cfncluster']['dcv']['authenticator']['virtualenv'] do
+    pyenv_path node['cfncluster']['dcv']['authenticator']['virtualenv_path']
+    pyenv_user node['cfncluster']['dcv']['authenticator']['user']
     python_version node['cfncluster']['python-version']
   end
 end
@@ -75,9 +75,9 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7
     install_rpm_packages(dcv_packages)
 
     # Create user and Python virtual env for the external authenticator
-    user node['cfncluster']['dcv']['ext_auth_user'] do
+    user node['cfncluster']['dcv']['authenticator']['user'] do
       manage_home true
-      home node['cfncluster']['dcv']['ext_auth_user_home']
+      home node['cfncluster']['dcv']['authenticator']['user_home']
       comment 'NICE DCV External Authenticator user'
       system true
       shell '/bin/bash'
@@ -85,9 +85,9 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7
     install_ext_auth_virtual_env
 
   when 'ComputeFleet'
-    user node['cfncluster']['dcv']['ext_auth_user'] do
+    user node['cfncluster']['dcv']['authenticator']['user'] do
       manage_home false
-      home node['cfncluster']['dcv']['ext_auth_user_home']
+      home node['cfncluster']['dcv']['authenticator']['user_home']
       comment 'NICE DCV External Authenticator user'
       system true
       shell '/bin/bash'

@@ -16,13 +16,13 @@ stdout_logfile = /var/log/jobwatcher
 <% end -%>
 
 <% if node['cfncluster']['dcv_enabled'] == "master" -%>
-[program:pcluster_dcv_ext_auth]
-command = <%= node['cfncluster']['dcv']['ext_auth_virtualenv_path'] %>/bin/python <%= node['cfncluster']['dcv']['ext_auth_user_home'] %>/pcluster_dcv_ext_auth.py
+[program:pcluster_dcv_authenticator]
+command = <%= node['cfncluster']['dcv']['authenticator']['virtualenv_path'] %>/bin/python <%= node['cfncluster']['dcv']['authenticator']['user_home'] %>/pcluster_dcv_authenticator.py
       --port <%= Integer(node['cfncluster']['dcv_port']) + 1 %>
-      --certificate <%= node['cfncluster']['dcv']['ext_auth_certificate'] %>
-      --key <%= node['cfncluster']['dcv']['ext_auth_private_key'] %>
-user = <%= node['cfncluster']['dcv']['ext_auth_user'] %>
-environment = HOME="<%= node['cfncluster']['dcv']['ext_auth_user_home'] %>",USER="<%= node['cfncluster']['dcv']['ext_auth_user'] %>"
+      --certificate <%= node['cfncluster']['dcv']['authenticator']['certificate'] %>
+      --key <%= node['cfncluster']['dcv']['authenticator']['private_key'] %>
+user = <%= node['cfncluster']['dcv']['authenticator']['user'] %>
+environment = HOME="<%= node['cfncluster']['dcv']['authenticator']['user_home'] %>",USER="<%= node['cfncluster']['dcv']['authenticator']['user'] %>"
 <% end -%>
 <%# ComputeFleet -%>
 <% when 'ComputeFleet' -%>

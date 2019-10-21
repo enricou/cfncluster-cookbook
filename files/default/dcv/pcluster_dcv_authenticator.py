@@ -30,8 +30,8 @@ from urllib.parse import parse_qsl, urlparse
 
 from pwd import getpwuid
 
-AUTHORIZATION_FILE_DIR = "/var/spool/dcv_ext_auth"
-LOG_FILE_PATH = "/var/log/parallelcluster/pcluster_dcv_ext_auth.log"
+AUTHORIZATION_FILE_DIR = "/var/spool/parallelcluster/pcluster_dcv_authenticator"
+LOG_FILE_PATH = "/var/log/parallelcluster/pcluster_dcv_authenticator.log"
 
 
 def retry(func, func_args, attempts=1, wait=0):

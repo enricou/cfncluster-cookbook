@@ -71,12 +71,12 @@ default['cfncluster']['dcv']['server'] = "nice-dcv-server-2019.1.7423-1.el7.x86_
 default['cfncluster']['dcv']['xdcv'] = "nice-xdcv-2019.1.226-1.el7.x86_64.rpm"  # required to create virtual sessions
 default['cfncluster']['dcv']['gl'] = "nice-dcv-gl-2019.1.554-1.el7.x86_64.rpm"  # required to enable GPU sharing
 # DCV external authenticator configuration
-default['cfncluster']['dcv']['ext_auth_user'] = "dcvextauth"
-default['cfncluster']['dcv']['ext_auth_user_home'] = "/home/#{node['cfncluster']['dcv']['ext_auth_user']}"
-default['cfncluster']['dcv']['ext_auth_certificate'] = "/etc/parallelcluster/ext-auth-certificate.pem"
-default['cfncluster']['dcv']['ext_auth_private_key'] = "/etc/parallelcluster/ext-auth-private-key.pem"
-default['cfncluster']['dcv']['ext_auth_virtualenv'] = "dcv_ext_auth_virtualenv"
-default['cfncluster']['dcv']['ext_auth_virtualenv_path'] = "#{node['cfncluster']['dcv']['ext_auth_user_home']}/.pyenv/versions/#{node['cfncluster']['python-version']}/envs/#{node['cfncluster']['dcv']['ext_auth_virtualenv']}"
+default['cfncluster']['dcv']['authenticator']['user'] = "dcvextauth"
+default['cfncluster']['dcv']['authenticator']['user_home'] = "/home/#{node['cfncluster']['dcv']['authenticator']['user']}"
+default['cfncluster']['dcv']['authenticator']['certificate'] = "/etc/parallelcluster/ext-auth-certificate.pem"
+default['cfncluster']['dcv']['authenticator']['private_key'] = "/etc/parallelcluster/ext-auth-private-key.pem"
+default['cfncluster']['dcv']['authenticator']['virtualenv'] = "dcv_authenticator_virtualenv"
+default['cfncluster']['dcv']['authenticator']['virtualenv_path'] = "#{node['cfncluster']['dcv']['authenticator']['user_home']}/.pyenv/versions/#{node['cfncluster']['python-version']}/envs/#{node['cfncluster']['dcv']['authenticator']['virtualenv']}"
 
 # Reboot after default_pre recipe
 default['cfncluster']['default_pre_reboot'] = 'true'

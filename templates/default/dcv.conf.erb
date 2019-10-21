@@ -152,4 +152,4 @@ auth-token-verifier="https://localhost:<%= Integer(node['cfncluster']['dcv_port'
 
 # Property "ca-file" specifies the file containing the certificate authorities (CAs)
 # trusted by the DCV server.
-ca-file="<%= node['cfncluster']['dcv']['ext_auth_certificate'] %>"
+ca-file="<%= node['cfncluster']['dcv']['authenticator']['certificate'] %>"

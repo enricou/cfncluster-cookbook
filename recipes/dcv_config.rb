@@ -80,7 +80,7 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
     mode '0700'
   end
   execute "certificate generation" do
-    command "/etc/parallelcluster/generate_certificate.sh \"#{node['cfncluster']['dcv']['ext_auth_certificate']}\" \"#{node['cfncluster']['dcv']['ext_auth_private_key']}\" #{node['cfncluster']['dcv']['ext_auth_user']} dcv"
+    command "/etc/parallelcluster/generate_certificate.sh \"#{node['cfncluster']['dcv']['authenticator']['certificate']}\" \"#{node['cfncluster']['dcv']['authenticator']['private_key']}\" #{node['cfncluster']['dcv']['authenticator']['user']} dcv"
     user 'root'
   end
 
@@ -94,8 +94,8 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
   end
 
   # Create directory for the external authenticator to store access file created by the users
-  directory '/var/spool/dcv_ext_auth' do
-    owner node['cfncluster']['dcv']['ext_auth_user']
+  directory '/var/spool/parallelcluster/pcluster_dcv_authenticator' do
+    owner node['cfncluster']['dcv']['authenticator']['user']
     mode '1733'
     recursive true
   end
@@ -108,9 +108,9 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && node['c
   end
 
   # Install DCV external authenticator
-  cookbook_file "#{node['cfncluster']['dcv']['ext_auth_user_home']}/pcluster_dcv_ext_auth.py" do
-    source 'dcv/pcluster_dcv_ext_auth.py'
-    owner node['cfncluster']['dcv']['ext_auth_user']
+  cookbook_file "#{node['cfncluster']['dcv']['authenticator']['user_home']}/pcluster_dcv_authenticator.py" do
+    source 'dcv/pcluster_dcv_authenticator.py'
+    owner node['cfncluster']['dcv']['authenticator']['user']
     mode '0700'
   end
 
