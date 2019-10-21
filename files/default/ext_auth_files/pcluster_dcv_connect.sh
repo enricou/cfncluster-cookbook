@@ -37,6 +37,7 @@
 AUTHORIZATION_FILE_DIR="/var/spool/dcv_ext_auth"
 DCV_SESSION_FOLDER="${HOME}/.parallelcluster/dcv"
 LOG_FILE_PATH="/var/log/parallelcluster/pcluster_dcv_connect.log"
+LOG_FILE_MAX_SIZE=5242880 # 5MB
 
 
 _fail() {
@@ -66,16 +67,20 @@ _atomic_touch() {
 }
 
 _log() {
-  text=$1
+    text=$1
 
-  log_time=$(date "+%Y-%m-%d %H:%M:%S")
-  log_file=${LOG_FILE_PATH}.$(date +%Y%m%d)
+    log_time=$(date "+%Y-%m-%d %H:%M:%S")
 
-  touch ${log_file}
-  if [[ ! -f ${log_file} ]]; then
-    _fail "Unable to create log file ${log_file}. Exiting..";
-  fi
-  echo "[${log_time}]: ${text}" >> ${log_file};
+    file_size=$(du -b ${LOG_FILE_PATH} | awk '{print $1}')
+
+    [[ -f "${LOG_FILE_PATH}" ]] || _atomic_touch "${LOG_FILE_PATH}"
+
+    if [[ ${file_size} -gt ${LOG_FILE_MAX_SIZE} ]]; then
+        mv "${LOG_FILE_PATH}" "${LOG_FILE_PATH}.1"
+        echo "[${log_time}]: ${text}" > "${LOG_FILE_PATH}"
+    else
+        echo "[${log_time}]: ${text}" >> "${LOG_FILE_PATH}"
+    fi
 }
 
 _create_dcv_session() {
