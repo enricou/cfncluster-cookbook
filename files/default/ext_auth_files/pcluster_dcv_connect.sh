@@ -53,6 +53,18 @@ _check_if_empty() {
   fi
 }
 
+_atomic_touch() {
+    file_path="$1"
+
+    _umask=$(umask)
+    umask 0022 && touch "${file_path}"
+    umask ${_umask}
+
+    if [[ ! -f "${file_path}" ]]; then
+        _fail "Unable to create the file in the $(dirname "${file_path}") folder. Exiting.."
+    fi
+}
+
 _log() {
   text=$1
 
@@ -133,11 +145,7 @@ main() {
     # Create the access file in the AUTHORIZATION_FILE_DIR with 644 permissions
     # This is used by the external authenticator to verify the user declares himself as who he really is
     _log "Creating access file.."
-    _umask=$(umask)
-    umask 0022 && touch "${AUTHORIZATION_FILE_DIR}/${access_file}" && umask ${_umask}
-    if [[ ! -f "${AUTHORIZATION_FILE_DIR}/${access_file}" ]]; then
-        _fail "Unable to create Access File in the NICE DCV external authenticator folder."
-    fi
+    _atomic_touch "${AUTHORIZATION_FILE_DIR}/${access_file}"
     _log "Access file created successfully."
 
 
