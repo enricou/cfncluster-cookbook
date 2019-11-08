@@ -127,10 +127,4 @@ if node['platform'] == 'centos' && node['platform_version'].to_i == 7 && !File.e
   service "firewalld" do
     action %i[disable stop]
   end
-
-  # Disable selinux
-  selinux_state "SELinux Disabled" do
-    action :disabled
-    only_if 'which getenforce'
-  end
 end
