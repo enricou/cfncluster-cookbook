@@ -31,8 +31,15 @@ s3_domain = "https://s3.#{node['cfncluster']['cfn_region']}.#{node['cfncluster']
 
 # Set URLs used to download the package and expected signature based on platform
 package_url_prefix = "#{s3_domain}/amazoncloudwatch-agent-#{node['cfncluster']['cfn_region']}"
+platform_url_component = value_for_platform(
+  'centos' => {
+    '~>8' => arm_instance? ? 'redhat' : node['platform'],
+    'default' => node['platform']
+  },
+  'amazon' => { 'default' => 'amazon_linux' },
+  'default' => node['platform']
+)
 arch_url_component = arm_instance? ? 'arm64' : 'amd64'
-platform_url_component = node['platform'] == 'amazon' ? 'amazon_linux' : node['platform']
 package_extension = node['platform'] == 'ubuntu' ? 'deb' : 'rpm'
 package_url = [
   package_url_prefix,
@@ -41,6 +48,7 @@ package_url = [
   "latest",
   "amazon-cloudwatch-agent.#{package_extension}"
 ].join('/')
+
 package_path = "#{node['cfncluster']['sources_dir']}/amazon-cloudwatch-agent.#{package_extension}"
 signature_url = "#{package_url}.sig"
 signature_path = "#{package_path}.sig"
