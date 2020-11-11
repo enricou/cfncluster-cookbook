@@ -19,6 +19,8 @@ then
   exit 1
 fi
 
+# https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_networking/configuring-policy-based-routing-to-define-alternative-routes_configuring-and-managing-networking
+
 con_name="System ${DEVICE_NAME}"
 route_table="100${DEVICE_NUMBER}"
 priority="100${DEVICE_NUMBER}"
@@ -29,13 +31,22 @@ original_con_name=`nmcli -t -f GENERAL.CONNECTION device show ${DEVICE_NAME} | c
 nmcli connection modify "${original_con_name}" con-name "${con_name}" ifname ${DEVICE_NAME}
 
 # Setup connection method to "manual", configure ip address and gateway
-nmcli connection modify "${con_name}" ipv4.method manual ipv4.addresses ${DEVICE_IP_ADDRESS}/${CIDR_PREFIX_LENGTH} ipv4.gateway ${GW_IP_ADDRESS}
+# sudo nmcli connection modify "${con_name}" ipv4.method manual ipv4.addresses ${DEVICE_IP_ADDRESS}/${CIDR_PREFIX_LENGTH} ipv4.gateway ${GW_IP_ADDRESS}
 
 # Setup routes
-nmcli connection modify "${con_name}" ipv4.routes "0.0.0.0/0 ${GW_IP_ADDRESS} table=${route_table}"
+# This command uses the ipv4.routes parameter to add a static route to the routing table with ID ${route_table}.
+# This static route for 0.0.0.0/0 uses the IP of the gateway as next hop.
+nmcli connection modify "${con_name}" ipv4.routes "0.0.0.0/0 ${GW_IP_ADDRESS} ${metric} table=${route_table}"
 
 # Setup routing rules
+# The command uses the ipv4.routing-rules parameter to add a routing rule with priority ${priority} that routes
+############ traffic from the 10.0.0.0/24 subnet to table ${route_table}. Low values have a high priority.
+# traffic from ${DEVICE_IP_ADDRESS} to table ${route_table}. Low values have a high priority.
+# Note that the syntax in the ipv4.routing-rules parameter is the same as in an ip route??? add command,
+# except that ipv4.routing-rules always requires specifying a priority.
 nmcli connection modify "${con_name}" ipv4.routing-rules "priority ${priority} from ${DEVICE_IP_ADDRESS} table ${route_table}"
 
 # Assign route table and metric to the device
-nmcli dev modify ${DEVICE_NAME} ipv4.route-table ${route_table} ipv4.route-metric ${metric}
+# Reapply previous connection modification.
+nmcli dev reapply ${DEVICE_NAME}
+#sudo nmcli dev modify ${DEVICE_NAME} ipv4.route-table ${route_table}
